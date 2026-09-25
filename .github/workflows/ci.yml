@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    # Pinned rather than macos-latest so the SDK that proves the build only changes on purpose.
+    # Apple Silicon runner, so the artifact is arm64.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - name: snapshot hook
+        run: |
+          # The hook must keep only rate_limits and write nothing when they are absent.
+          export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME/.claude"
+          echo '{"session_id":"s","rate_limits":{"five_hour":{"used_percentage":42,"resets_at":1}}}' | sh scripts/usage-snapshot.sh
+          jq -e '.rate_limits.five_hour.used_percentage == 42 and (has("session_id") | not)' "$HOME/.claude/usage-bar.json"
+          rm "$HOME/.claude/usage-bar.json"
+          echo '{"session_id":"s"}' | sh scripts/usage-snapshot.sh
+          test ! -e "$HOME/.claude/usage-bar.json"
+      - name: app bundle
+        run: VERSION=ci-${GITHUB_SHA::7} ZIP=1 sh scripts/build-app.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: UsageBar-macos-arm64
+          path: dist/*.zip
+          retention-days: 30

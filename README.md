@@ -24,6 +24,20 @@ Accessibility permission.
 Click the menu bar item to choose which windows to show (5h, 7d, or both), the style (`5h 60%`, `60%`,
 mini bars, or bars + %), whether to show the ✳︎ icon, and whether to add the time until reset.
 
+## Releases
+
+Every merged pull request publishes a GitHub release with a zipped, ad-hoc signed `UsageBar.app`
+(Apple Silicon). The PR's label picks the version bump:
+
+| Label | Bump |
+|---|---|
+| `release:major` | v1.4.2 → v2.0.0 |
+| `release:minor` | v1.4.2 → v1.5.0 |
+| _(none)_ | v1.4.2 → v1.4.3 |
+| `release:skip` | no release |
+
+Direct pushes to `main` don't release. Pushing a `v*` tag by hand releases that tag.
+
 ## Limitations
 
 Numbers update only while Claude Code is running and only for subscribers (Pro/Max). Usage on claude.ai
