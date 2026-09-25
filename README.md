@@ -15,10 +15,10 @@ Accessibility permission.
 2. In your status line script, right after it reads stdin into `input`, add:
 
    ```sh
-   echo "$input" | sh /path/to/claude_usage_bar/scripts/usage-snapshot.sh
+   echo "$input" | sh /path/to/claude-bar/scripts/usage-snapshot.sh
    ```
 
-   If you don't have a status line yet, set `"statusLine": {"type": "command", "command": "sh /path/to/claude_usage_bar/scripts/usage-snapshot.sh"}` in `~/.claude/settings.json`.
+   If you don't have a status line yet, set `"statusLine": {"type": "command", "command": "sh /path/to/claude-bar/scripts/usage-snapshot.sh"}` in `~/.claude/settings.json`.
 3. Open `build/UsageBar.app` (optionally move it to `/Applications` and add it to Login Items).
 
 ## Display options
