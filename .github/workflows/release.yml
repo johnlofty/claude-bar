@@ -37,10 +37,12 @@ jobs:
           ref: ${{ env.SHA }}
       - name: build and zip
         # The version comes from the tag, not `git describe`: checkout is shallow and has no tags.
-        run: VERSION="${TAG:-dev-${SHA::7}}" ZIP=1 sh scripts/build-app.sh
+        run: VERSION="${TAG:-dev-${SHA::7}}" UNIVERSAL=1 ZIP=1 sh scripts/build-app.sh
       - name: verify the bundle
         run: |
           codesign --verify --deep --strict build/UsageBar.app
+          lipo -archs build/UsageBar.app/Contents/MacOS/UsageBar | grep -q x86_64
+          lipo -archs build/UsageBar.app/Contents/MacOS/usagebar-hook | grep -q x86_64
           plutil -lint build/UsageBar.app/Contents/Info.plist
           ls -la dist
       - name: publish
@@ -55,9 +57,9 @@ jobs:
             --target "$SHA" \
             --title "UsageBar $TAG" \
             --generate-notes \
-            --notes "Apple Silicon build, ad-hoc signed and not notarized. On first launch, right-click the app and choose Open, or run: xattr -dr com.apple.quarantine UsageBar.app"
+            --notes "Universal build (Apple Silicon and Intel), macOS 13 or later. Ad-hoc signed and not notarized: see the README for how to open it the first time, then click Connect in the menu bar popover."
       - uses: actions/upload-artifact@v7
         if: env.TAG == ''
         with:
-          name: UsageBar-macos-arm64
+          name: UsageBar-macos-universal
           path: dist/*.zip

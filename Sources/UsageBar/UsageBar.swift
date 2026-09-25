@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Snapshot written by the Claude Code status line hook (scripts/usage-snapshot.sh).
+// Snapshot written by the Claude Code status line hook (usagebar-hook, or scripts/usage-snapshot.sh).
 struct Snapshot: Decodable {
     struct Window: Decodable {
         let used_percentage: Double
@@ -16,15 +16,18 @@ struct Snapshot: Decodable {
 
 @MainActor
 final class UsageStore: ObservableObject {
-    static let fileURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".claude/usage-bar.json")
+    static let fileURL = ClaudeSetup.claudeDir.appendingPathComponent("usage-bar.json")
 
     @Published var snapshot: Snapshot?
     @Published var now = Date()
+    @Published var connected = ClaudeSetup.isConnected
+    @Published var lastRun = ClaudeSetup.lastRun
+    @Published var setupError: String?
     private var lastModified: Date?
     private var timer: Timer?
 
     init() {
+        ClaudeSetup.refreshHookIfNeeded()
         reload()
         // Polling a single small file is cheap and survives the hook's atomic rename,
         // which would break a file-descriptor based watcher.
@@ -32,6 +35,8 @@ final class UsageStore: ObservableObject {
             Task { @MainActor in
                 self?.now = Date()
                 self?.reload()
+                self?.connected = ClaudeSetup.isConnected
+                self?.lastRun = ClaudeSetup.lastRun
             }
         }
     }
@@ -43,6 +48,27 @@ final class UsageStore: ObservableObject {
         lastModified = modified
         guard let data = try? Data(contentsOf: Self.fileURL) else { snapshot = nil; return }
         snapshot = try? JSONDecoder().decode(Snapshot.self, from: data)
+    }
+
+    func connect() {
+        do {
+            try ClaudeSetup.connect()
+            setupError = nil
+        } catch {
+            setupError = error.localizedDescription
+        }
+        connected = ClaudeSetup.isConnected
+    }
+
+    func disconnect() {
+        do {
+            try ClaudeSetup.disconnect()
+            setupError = nil
+        } catch {
+            setupError = error.localizedDescription
+        }
+        connected = ClaudeSetup.isConnected
+        lastRun = ClaudeSetup.lastRun
     }
 
     /// A window whose reset time has passed no longer describes current usage.
@@ -125,12 +151,17 @@ struct MenuBarLabel: View {
 
     var body: some View {
         let items = store.shown(windows)
+        let hasBars = style == .bars || style == .barsAndPercent
+        let text = text(items)
+        // The icon always leads. A menu bar label shows one image and one text, so with bars the
+        // icon is drawn into the bars image; otherwise it starts the text.
         HStack(spacing: 4) {
-            if style == .bars || style == .barsAndPercent {
-                barsImage(items.map { $0.window?.used_percentage })
+            if hasBars {
+                barsImage(items.map { $0.window?.used_percentage }, icon: showIcon)
             }
-            if style != .bars || showIcon || showCountdown {
-                Text(text(items)).monospacedDigit()
+            let label = !hasBars && showIcon ? (text.isEmpty ? "✳︎" : "✳︎ " + text) : text
+            if !label.isEmpty {
+                Text(label).monospacedDigit()
             }
         }
     }
@@ -145,13 +176,17 @@ struct MenuBarLabel: View {
             case .bars: return countdown.isEmpty ? nil : countdown.trimmingCharacters(in: .whitespaces)
             }
         }
-        let body = parts.joined(separator: style == .labeled ? " · " : "/")
-        return showIcon ? (body.isEmpty ? "✳︎" : "✳︎ " + body) : body
+        return parts.joined(separator: style == .labeled ? " · " : "/")
     }
 
     @MainActor
-    private func barsImage(_ values: [Double?]) -> Image {
-        let renderer = ImageRenderer(content: MiniBars(values: values))
+    private func barsImage(_ values: [Double?], icon: Bool) -> Image {
+        let renderer = ImageRenderer(content: HStack(spacing: 3) {
+            if icon {
+                Text("✳︎").font(.system(size: 13)).foregroundStyle(.black)
+            }
+            MiniBars(values: values)
+        })
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
         guard let ns = renderer.nsImage else { return Image(systemName: "chart.bar") }
         ns.isTemplate = true
@@ -232,6 +267,43 @@ struct WindowRow: View {
     }
 }
 
+/// Shown until the first usage data arrives: what to do next, depending on how far setup got.
+struct SetupStatus: View {
+    @ObservedObject var store: UsageStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !store.connected {
+                Text("Connect to Claude Code").font(.headline)
+                Text("""
+                    UsageBar reads your limits from Claude Code's status line. Connecting sets \
+                    ~/.claude/settings.json to run UsageBar's helper, which keeps running your \
+                    current status line. A backup is saved and Disconnect restores it.
+                    """)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Connect") { store.connect() }
+                    .buttonStyle(.borderedProminent)
+            } else if let run = store.lastRun, !run.had_rate_limits {
+                Text("No usage limits reported").font(.headline)
+                Text("""
+                    Claude Code ran the helper \(relative(Date(timeIntervalSince1970: run.ran_at), to: store.now)) \
+                    but sent no limits. They're only available when Claude Code is signed in with a \
+                    Claude Pro or Max plan (run /login), not an API key, Bedrock or Vertex, and appear \
+                    after the first reply in a session. Updating Claude Code can also help.
+                    """)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Waiting for Claude Code").font(.headline)
+                Text("Connected. Send a prompt in Claude Code (start a new session if one was already open) and usage appears here.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 struct UsageMenu: View {
     @ObservedObject var store: UsageStore
 
@@ -243,9 +315,10 @@ struct UsageMenu: View {
                 Text("Updated \(relative(Date(timeIntervalSince1970: s.captured_at), to: store.now)) by Claude Code")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                Text("No usage data yet").font(.headline)
-                Text("Run a prompt in Claude Code. Its status line writes\n~/.claude/usage-bar.json.")
-                    .font(.caption).foregroundStyle(.secondary)
+                SetupStatus(store: store)
+            }
+            if let error = store.setupError {
+                Text(error).font(.caption).foregroundStyle(.red)
             }
             Divider()
             DisplaySettings()
@@ -253,6 +326,14 @@ struct UsageMenu: View {
             HStack {
                 Button("Quit") { NSApp.terminate(nil) }
                     .keyboardShortcut("q")
+                if store.connected {
+                    Button("Disconnect") { store.disconnect() }
+                        .help("Restore your previous Claude Code status line")
+                } else if store.snapshot != nil {
+                    // Data from a hand-made hook; offer the managed one.
+                    Button("Connect") { store.connect() }
+                        .help("Let UsageBar manage the Claude Code status line hook")
+                }
                 Spacer()
                 Text(buildVersion)
                     .font(.caption).monospacedDigit().foregroundStyle(.secondary)
