@@ -190,10 +190,16 @@ let buildVersion: String = {
     return "\(version) · \(commit)"
 }()
 
+/// "in 22m" / "4s ago". RelativeDateTimeFormatter's short style can render these as "+22 min" / "-4 s".
 func relative(_ date: Date, to now: Date) -> String {
-    let f = RelativeDateTimeFormatter()
-    f.unitsStyle = .short
-    return f.localizedString(for: date, relativeTo: now)
+    let secs = date.timeIntervalSince(now)
+    if abs(secs) < 5 { return "just now" }
+    let f = DateComponentsFormatter()
+    f.unitsStyle = .abbreviated
+    f.maximumUnitCount = 2
+    f.allowedUnits = abs(secs) < 60 ? [.second] : [.day, .hour, .minute]
+    let span = f.string(from: abs(secs)) ?? ""
+    return secs > 0 ? "in \(span)" : "\(span) ago"
 }
 
 struct WindowRow: View {
