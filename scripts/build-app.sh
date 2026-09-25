@@ -1,7 +1,8 @@
 #!/bin/sh
 # Builds UsageBar.app into ./build (ad-hoc signed, needs no permissions).
 # VERSION (e.g. v1.2.3, from the release tag in CI) sets the bundle version; defaults to dev.
-# With ZIP=1 it also writes dist/UsageBar-$VERSION-macos-arm64.zip.
+# UNIVERSAL=1 builds arm64 + x86_64 (needs full Xcode, as on CI); otherwise the host arch only.
+# With ZIP=1 it also writes dist/UsageBar-$VERSION-macos-<arch>.zip.
 set -e
 cd "$(dirname "$0")/.."
 VERSION=${VERSION:-dev}
@@ -18,11 +19,23 @@ if [ -z "$GITHUB_SHA" ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
   commit="$commit-dirty"
 fi
 
-swift build -c release
+if [ "${UNIVERSAL:-0}" = 1 ]; then
+  set -- --arch arm64 --arch x86_64
+  arch=universal
+else
+  set --
+  arch=$(uname -m)
+fi
+swift build -c release "$@"
+bin=$(swift build -c release "$@" --show-bin-path)
 app=build/UsageBar.app
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp .build/release/UsageBar "$app/Contents/MacOS/UsageBar"
+cp "$bin/UsageBar" "$app/Contents/MacOS/UsageBar"
+# The status line helper the app installs into ~/.claude/usagebar. Signed on its own first:
+# it is copied out of the bundle, and arm64 will not run an unsigned binary.
+cp "$bin/usagebar-hook" "$app/Contents/MacOS/usagebar-hook"
+codesign --force --sign - "$app/Contents/MacOS/usagebar-hook"
 # Regenerate with scripts/make-icon.sh after editing scripts/make-icon.swift.
 cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cat > "$app/Contents/Info.plist" <<EOF
@@ -45,12 +58,12 @@ cat > "$app/Contents/Info.plist" <<EOF
 </plist>
 EOF
 codesign --force --sign - "$app"
-echo "Built $app ($VERSION, $commit)"
+echo "Built $app ($VERSION, $commit, $(lipo -archs "$app/Contents/MacOS/UsageBar"))"
 
 if [ "${ZIP:-0}" = 1 ]; then
   # ditto keeps the bundle's signature and metadata intact where zip -r would not.
   mkdir -p dist
-  zip="dist/UsageBar-$VERSION-macos-arm64.zip"
+  zip="dist/UsageBar-$VERSION-macos-$arch.zip"
   rm -f "$zip"
   ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
   ls -la "$zip"
