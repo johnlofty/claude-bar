@@ -2,7 +2,7 @@
 
 A macOS menu bar app that shows your Claude subscription usage (5-hour and weekly limits).
 
-<img src="docs/screenshot.png" alt="UsageBar popover showing 5-hour and weekly usage with menu bar display settings" width="252">
+<img src="docs/screenshot.png" alt="UsageBar popover showing 5-hour and weekly usage with menu bar display settings" width="306">
 
 It never touches credentials. Claude Code already passes `rate_limits` to your
 [status line](https://docs.claude.com/en/docs/claude-code/statusline) command; a small hook saves just those
