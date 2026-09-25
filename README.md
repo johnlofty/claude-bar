@@ -1,3 +1,5 @@
+<img src="docs/icon.png" alt="" width="96" align="right">
+
 # UsageBar
 
 A macOS menu bar app that shows your Claude subscription usage (5-hour and weekly limits).
