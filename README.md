@@ -19,6 +19,11 @@ Accessibility permission.
    If you don't have a status line yet, set `"statusLine": {"type": "command", "command": "sh /path/to/claude_usage_bar/scripts/usage-snapshot.sh"}` in `~/.claude/settings.json`.
 3. Open `build/UsageBar.app` (optionally move it to `/Applications` and add it to Login Items).
 
+## Display options
+
+Click the menu bar item to choose which windows to show (5h, 7d, or both), the style (`5h 60%`, `60%`,
+mini bars, or bars + %), whether to show the ✳︎ icon, and whether to add the time until reset.
+
 ## Limitations
 
 Numbers update only while Claude Code is running and only for subscribers (Pro/Max). Usage on claude.ai

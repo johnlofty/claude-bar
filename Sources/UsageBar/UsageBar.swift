@@ -51,11 +51,134 @@ final class UsageStore: ObservableObject {
         return w
     }
 
-    var title: String {
-        guard let s = snapshot else { return "✳︎ –" }
-        let parts = [("5h", live(s.rate_limits.five_hour)), ("7d", live(s.rate_limits.seven_day))]
-            .map { label, w in w.map { "\(label) \(Int($0.used_percentage.rounded()))%" } ?? "\(label) –" }
-        return "✳︎ " + parts.joined(separator: " · ")
+    /// The windows chosen in settings, paired with their short labels.
+    func shown(_ windows: ShownWindows) -> [(label: String, window: Snapshot.Window?)] {
+        let s = snapshot?.rate_limits
+        var out: [(String, Snapshot.Window?)] = []
+        if windows != .weekly { out.append(("5h", live(s?.five_hour))) }
+        if windows != .fiveHour { out.append(("7d", live(s?.seven_day))) }
+        return out
+    }
+}
+
+// MARK: - Menu bar label settings
+
+enum ShownWindows: String, CaseIterable, Identifiable {
+    case fiveHour, weekly, both
+    var id: Self { self }
+    var name: String {
+        switch self {
+        case .fiveHour: return "5h"
+        case .weekly: return "7d"
+        case .both: return "Both"
+        }
+    }
+}
+
+enum LabelStyle: String, CaseIterable, Identifiable {
+    case labeled, compact, bars, barsAndPercent
+    var id: Self { self }
+    var name: String {
+        switch self {
+        case .labeled: return "5h 60%"
+        case .compact: return "60%"
+        case .bars: return "Bars"
+        case .barsAndPercent: return "Bars + %"
+        }
+    }
+}
+
+/// Short countdown for the menu bar, e.g. "2h", "35m", "3d".
+func shortCountdown(to resetsAt: TimeInterval, from now: Date) -> String {
+    let secs = max(0, resetsAt - now.timeIntervalSince1970)
+    if secs >= 86_400 { return "\(Int(secs / 86_400))d" }
+    if secs >= 3_600 { return "\(Int(secs / 3_600))h" }
+    return "\(Int(secs / 60))m"
+}
+
+/// Tiny horizontal meters, rendered as a template image so they follow the menu bar's appearance.
+struct MiniBars: View {
+    let values: [Double?]
+
+    var body: some View {
+        VStack(spacing: values.count > 1 ? 2 : 0) {
+            ForEach(values.indices, id: \.self) { i in
+                let h: CGFloat = values.count > 1 ? 5 : 7
+                ZStack(alignment: .leading) {
+                    Capsule().stroke(lineWidth: 1).frame(width: 26, height: h)
+                    Capsule()
+                        .frame(width: max(0, 26 * CGFloat(min(values[i] ?? 0, 100) / 100)), height: h)
+                }
+            }
+        }
+        .foregroundStyle(.black)
+        .padding(.vertical, 1)
+    }
+}
+
+struct MenuBarLabel: View {
+    @ObservedObject var store: UsageStore
+    @AppStorage("shownWindows") private var windows: ShownWindows = .both
+    @AppStorage("labelStyle") private var style: LabelStyle = .labeled
+    @AppStorage("showIcon") private var showIcon = true
+    @AppStorage("showCountdown") private var showCountdown = false
+
+    var body: some View {
+        let items = store.shown(windows)
+        HStack(spacing: 4) {
+            if style == .bars || style == .barsAndPercent {
+                barsImage(items.map { $0.window?.used_percentage })
+            }
+            if style != .bars || showIcon || showCountdown {
+                Text(text(items)).monospacedDigit()
+            }
+        }
+    }
+
+    private func text(_ items: [(label: String, window: Snapshot.Window?)]) -> String {
+        let parts: [String] = items.compactMap { item in
+            let pct = item.window.map { "\(Int($0.used_percentage.rounded()))%" } ?? "–"
+            let countdown = showCountdown ? item.window.map { " (\(shortCountdown(to: $0.resets_at, from: store.now)))" } ?? "" : ""
+            switch style {
+            case .labeled: return "\(item.label) \(pct)\(countdown)"
+            case .compact, .barsAndPercent: return "\(pct)\(countdown)"
+            case .bars: return countdown.isEmpty ? nil : countdown.trimmingCharacters(in: .whitespaces)
+            }
+        }
+        let body = parts.joined(separator: style == .labeled ? " · " : "/")
+        return showIcon ? (body.isEmpty ? "✳︎" : "✳︎ " + body) : body
+    }
+
+    @MainActor
+    private func barsImage(_ values: [Double?]) -> Image {
+        let renderer = ImageRenderer(content: MiniBars(values: values))
+        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
+        guard let ns = renderer.nsImage else { return Image(systemName: "chart.bar") }
+        ns.isTemplate = true
+        return Image(nsImage: ns)
+    }
+}
+
+struct DisplaySettings: View {
+    @AppStorage("shownWindows") private var windows: ShownWindows = .both
+    @AppStorage("labelStyle") private var style: LabelStyle = .labeled
+    @AppStorage("showIcon") private var showIcon = true
+    @AppStorage("showCountdown") private var showCountdown = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Menu bar").font(.caption).foregroundStyle(.secondary)
+            Picker("Show", selection: $windows) {
+                ForEach(ShownWindows.allCases) { Text($0.name).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            Picker("Style", selection: $style) {
+                ForEach(LabelStyle.allCases) { Text($0.name).tag($0) }
+            }
+            Toggle("Show ✳︎ icon", isOn: $showIcon)
+            Toggle("Show time until reset", isOn: $showCountdown)
+        }
+        .controlSize(.small)
     }
 }
 
@@ -111,8 +234,15 @@ struct UsageMenu: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Divider()
-            Button("Quit") { NSApp.terminate(nil) }
-                .keyboardShortcut("q")
+            DisplaySettings()
+            Divider()
+            HStack {
+                Button("Quit") { NSApp.terminate(nil) }
+                    .keyboardShortcut("q")
+                Spacer()
+                Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .padding(14)
         .frame(width: 260)
@@ -127,7 +257,7 @@ struct UsageBarApp: App {
         MenuBarExtra {
             UsageMenu(store: store)
         } label: {
-            Text(store.title).monospacedDigit()
+            MenuBarLabel(store: store)
         }
         .menuBarExtraStyle(.window)
     }
