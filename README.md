@@ -2,6 +2,8 @@
 
 A macOS menu bar app that shows your Claude subscription usage (5-hour and weekly limits).
 
+<img src="docs/screenshot.png" alt="UsageBar popover showing 5-hour and weekly usage with menu bar display settings" width="252">
+
 It never touches credentials. Claude Code already passes `rate_limits` to your
 [status line](https://docs.claude.com/en/docs/claude-code/statusline) command; a small hook saves just those
 numbers to `~/.claude/usage-bar.json`, and the app reads that file. No network access, Keychain, or
@@ -18,6 +20,25 @@ Accessibility permission.
 
    If you don't have a status line yet, set `"statusLine": {"type": "command", "command": "sh /path/to/claude_usage_bar/scripts/usage-snapshot.sh"}` in `~/.claude/settings.json`.
 3. Open `build/UsageBar.app` (optionally move it to `/Applications` and add it to Login Items).
+
+## Display options
+
+Click the menu bar item to choose which windows to show (5h, 7d, or both), the style (`5h 60%`, `60%`,
+mini bars, or bars + %), whether to show the ✳︎ icon, and whether to add the time until reset.
+
+## Releases
+
+Every merged pull request publishes a GitHub release with a zipped, ad-hoc signed `UsageBar.app`
+(Apple Silicon). The PR's label picks the version bump:
+
+| Label | Bump |
+|---|---|
+| `release:major` | v1.4.2 → v2.0.0 |
+| `release:minor` | v1.4.2 → v1.5.0 |
+| _(none)_ | v1.4.2 → v1.4.3 |
+| `release:skip` | no release |
+
+Direct pushes to `main` don't release. Pushing a `v*` tag by hand releases that tag.
 
 ## Limitations
 
