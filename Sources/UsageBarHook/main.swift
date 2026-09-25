@@ -8,6 +8,9 @@
 // Foundation only, so it starts fast and needs neither jq nor the app to be running.
 import Foundation
 
+// The user's status line may exit without reading stdin; writing to its closed pipe must not kill us.
+signal(SIGPIPE, SIG_IGN)
+
 // $HOME first, as Claude Code itself resolves ~/.claude.
 let home = ProcessInfo.processInfo.environment["HOME"].map { URL(fileURLWithPath: $0) }
     ?? FileManager.default.homeDirectoryForCurrentUser
@@ -56,7 +59,8 @@ do {
 } catch {
     exit(0)
 }
-stdin.fileHandleForWriting.write(input)
+// Throwing variant: the legacy write(_:) raises an uncaught exception on a closed pipe.
+try? stdin.fileHandleForWriting.write(contentsOf: input)
 try? stdin.fileHandleForWriting.close()
 process.waitUntilExit()
 exit(process.terminationStatus)

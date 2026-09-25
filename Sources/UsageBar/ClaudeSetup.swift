@@ -52,8 +52,8 @@ enum ClaudeSetup {
                                                   options: [.prettyPrinted, .sortedKeys])
             try data.write(to: configURL, options: .atomic)
             if FileManager.default.fileExists(atPath: settingsURL.path) {
-                try? FileManager.default.removeItem(at: backupURL)
-                try FileManager.default.copyItem(at: settingsURL, to: backupURL)
+                // Copy the contents, not the file: a symlinked settings.json would otherwise back up as a link.
+                try Data(contentsOf: settingsURL).write(to: backupURL, options: .atomic)
             }
         }
         // Keep the user's other status line options, such as padding.
