@@ -182,6 +182,14 @@ struct DisplaySettings: View {
     }
 }
 
+/// "v1.2.3 · 2e3bc52" for a release, "dev · 2e3bc52" for a local build.
+let buildVersion: String = {
+    let info = Bundle.main.infoDictionary ?? [:]
+    let version = info["UBBuildVersion"] as? String ?? "dev"
+    guard let commit = info["UBBuildCommit"] as? String else { return version }
+    return "\(version) · \(commit)"
+}()
+
 func relative(_ date: Date, to now: Date) -> String {
     let f = RelativeDateTimeFormatter()
     f.unitsStyle = .short
@@ -240,8 +248,10 @@ struct UsageMenu: View {
                 Button("Quit") { NSApp.terminate(nil) }
                     .keyboardShortcut("q")
                 Spacer()
-                Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text(buildVersion)
+                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .help("Build version and commit")
             }
         }
         .padding(14)
